@@ -41,3 +41,32 @@ def benjamini_hochberg(pvalues: pd.Series, alpha: float = 0.05) -> pd.DataFrame:
         },
         index=pvalues.index,
     )
+
+
+# fit Y = alpha + beta * X where beta is the slope (hedge ratio) and alpha is the intercept.
+# return both so the spread can be built as the regression residual: Y - alpha - beta * X.
+def hedge_ratio(y_series: pd.Series, x_series: pd.Series) -> tuple[float, float]:
+    beta, alpha = np.polyfit(x_series.to_numpy(dtype=float), y_series.to_numpy(dtype=float), 1)
+    return float(alpha), float(beta)
+
+
+# estimate how quickly the spread returns toward its equilibrium (mean).
+def half_life(spread: pd.Series) -> float:
+    spread_vals = spread.to_numpy(dtype=float)
+    # array of previous spread values (lagged) paired with array of their changes in the next
+    # period (diffs).
+    lagged, diffs = spread_vals[:-1], np.diff(spread_vals)
+    # slope of diffs on lagged, which measures how much the next change moves for each 1-unit
+    # increase in the previous spread. A negative slope means a wide spread tends to shrink back
+    # toward its mean (mean reversion).
+    mean_rev_coef = np.polyfit(lagged, diffs, 1)[0]
+    # a nonnegative slope means the spread does not mean revert, so the half-life is infinite.
+    if mean_rev_coef >= 0:
+        return np.inf
+    # a slope of -1 or below means the spread fully resets or overshoots every period, so
+    # log(1 + mean_rev_coef) is undefined and there is no valid half-life.
+    if mean_rev_coef <= -1:
+        return np.nan
+    # number of periods for a deviation to shrink by half using the half-life formula:
+    # -ln(2) / ln(1 + mean_rev_coef).
+    return float(-np.log(2) / np.log(1 + mean_rev_coef))

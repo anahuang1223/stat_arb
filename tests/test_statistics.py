@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 from statsmodels.stats.multitest import multipletests
 
-from src.statistical_tests import benjamini_hochberg
+from src.statistical_tests import benjamini_hochberg, half_life, hedge_ratio
 
 
 # Check that BH results match the statsmodels implementation.
@@ -48,3 +48,46 @@ def test_bh_invalid():
 # Check that an empty input returns an empty DataFrame.
 def test_bh_empty():
     assert benjamini_hochberg(pd.Series([], dtype=float)).empty
+
+
+# Generate an AR(1) spread: current spread = phi * previous spread + random noise.
+# In half_life(), the mean-reversion slope is approx phi - 1.
+def _ar1(phi, n_obs, noise_sd, rng):
+    vals = np.zeros(n_obs)
+    for t in range(1, n_obs):
+        vals[t] = phi * vals[t - 1] + rng.normal(0, noise_sd)
+    return vals
+
+
+# Generate a cointegrated pair: X is a random walk and Y = 2 + beta * X + an AR(1) spread.
+def _coint_pair(n_obs=1000, beta=1.5, phi=0.9, seed=1):
+    rng = np.random.default_rng(seed)
+    x_series = pd.Series(np.cumsum(rng.normal(0, 1, n_obs)), name="X")
+    y_series = pd.Series(2.0 + beta * x_series + _ar1(phi, n_obs, 0.5, rng), name="Y")
+    return y_series, x_series
+
+
+# Check that hedge_ratio() recovers the true beta within 0.05.
+def test_hedge_ratio():
+    y_series, x_series = _coint_pair(beta=1.5)
+    _, beta = hedge_ratio(y_series, x_series)
+    assert beta == pytest.approx(1.5, abs=0.05)
+
+
+# Check that half_life() is within 10% of the theoretical AR(1) half-life.
+def test_half_life_ar1():
+    phi = 0.95
+    spread = pd.Series(_ar1(phi, 20000, 1.0, np.random.default_rng(2)))
+    assert half_life(spread) == pytest.approx(-np.log(2) / np.log(phi), rel=0.1)
+
+
+# Check that a random walk with no mean reversion has a very long half-life.
+def test_half_life_random_walk():
+    rng = np.random.default_rng(3)
+    assert half_life(pd.Series(np.cumsum(rng.normal(size=2000)))) > 100
+
+
+# Check that a spread alternating between +1 and -1 returns NaN since the slope is <= -1.
+def test_half_life_overshoot():
+    alternating = pd.Series([1.0, -1.0] * 50)
+    assert np.isnan(half_life(alternating))
