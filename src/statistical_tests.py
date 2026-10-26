@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from statsmodels.tsa.stattools import coint
 
 
 def benjamini_hochberg(pvalues: pd.Series, alpha: float = 0.05) -> pd.DataFrame:
@@ -70,3 +71,9 @@ def half_life(spread: pd.Series) -> float:
     # number of periods for a deviation to shrink by half using the half-life formula:
     # -ln(2) / ln(1 + mean_rev_coef).
     return float(-np.log(2) / np.log(1 + mean_rev_coef))
+
+
+# Engle-Granger test where H0 is that Y and X are not cointegrated.
+def engle_granger(y_series: pd.Series, x_series: pd.Series) -> float:
+    _, pvalue, _ = coint(y_series.to_numpy(dtype=float), x_series.to_numpy(dtype=float), trend="c")
+    return float(pvalue)

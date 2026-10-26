@@ -20,6 +20,8 @@ data:
 
 pairs:
   fdr_alpha: 0.05
+  min_half_life: 1
+  max_half_life: 60
 
 robustness:
   missing_frac_grid: [0.01, 0.02, 0.05, 0.10]
