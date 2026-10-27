@@ -23,5 +23,11 @@ pairs:
   min_half_life: 1
   max_half_life: 60
 
+signals:
+  zscore_window: 20
+  entry_z: 2.0
+  exit_z: 0.5
+  stop_z: 4.0
+
 robustness:
   missing_frac_grid: [0.01, 0.02, 0.05, 0.10]
