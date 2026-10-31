@@ -28,15 +28,20 @@ def download_prices(
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_file = cache_dir / f"prices_{start}_{end}.csv"
 
+    cached = pd.DataFrame()
     if cache_file.exists() and not force:
         cached = pd.read_csv(cache_file, index_col=0, parse_dates=True)
-        if set(tickers) <= set(cached.columns):
-            return cached[tickers]
+    # only download tickers the cache lacks, so switching universes does not refetch everything.
+    missing = [ticker for ticker in tickers if ticker not in cached.columns]
+    if not missing:
+        return cached[tickers]
 
-    raw = yf.download(tickers, start=start, end=end, auto_adjust=True, progress=False)
+    raw = yf.download(missing, start=start, end=end, auto_adjust=True, progress=False)
     prices = raw["Close"]
     if isinstance(prices, pd.Series):
-        prices = prices.to_frame(tickers[0])
+        prices = prices.to_frame(missing[0])
+    # a ticker yfinance cannot find comes back all NaN, and clean_prices drops it later.
+    prices = pd.concat([cached, prices.reindex(columns=missing)], axis=1)
 
     prices.to_csv(cache_file)
     return prices[tickers]
