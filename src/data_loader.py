@@ -1,11 +1,14 @@
+import io
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import requests
 import yaml
 import yfinance as yf
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SP500_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 
 
 def load_config(path: str | Path = PROJECT_ROOT / "config.yaml") -> dict:
@@ -15,6 +18,46 @@ def load_config(path: str | Path = PROJECT_ROOT / "config.yaml") -> dict:
 
 def all_tickers(universe: dict[str, list[str]]) -> list[str]:
     return sorted({t for tickers in universe.values() for t in tickers})
+
+
+# current S&P 500 members with their GICS sector and sub-industry, cached so reruns use the same
+# list. This is today's membership, so stocks that left the index are missing (survivorship bias).
+def load_sp500_constituents(cache_dir: str | Path, force: bool = False) -> pd.DataFrame:
+    cache_file = PROJECT_ROOT / cache_dir / "sp500_constituents.csv"
+    if cache_file.exists() and not force:
+        return pd.read_csv(cache_file)
+
+    # Download the Wikipedia page as HTML text.
+    html = requests.get(SP500_URL, headers={"User-Agent": "stat-arb-research"}, timeout=30).text
+    # Convert HTML text into a readable object and extract the S&P 500 table.
+    table = pd.read_html(io.StringIO(html), attrs={"id": "constituents"})[0]
+
+    # Standardize company information and convert ticker dots to Yahoo Finance dashes.
+    constituents = pd.DataFrame({
+        # yfinance writes share classes with a dash, e.g. BRK-B.
+        "ticker": table["Symbol"].str.replace(".", "-", regex=False),
+        "name": table["Security"],
+        "sector": table["GICS Sector"],
+        "sub_industry": table["GICS Sub-Industry"],
+        "cik": table["CIK"],
+    })
+    # two share classes of one company (GOOG/GOOGL) are trivially cointegrated, so keep one.
+    constituents = constituents.drop_duplicates("cik")
+
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    constituents.to_csv(cache_file, index=False)
+    return constituents
+
+
+# the tickers to trade: current S&P 500 members in the configured GICS sectors, grouped by sector
+# so pairs are only formed within a sector.
+def load_universe(config: dict | None = None) -> dict[str, list[str]]:
+    cfg = (config or load_config())["data"]
+    constituents = load_sp500_constituents(cfg["raw_dir"])
+    # Keep only companies whose sectors are listed in the configuration.
+    constituents = constituents[constituents["sector"].isin(cfg["sectors"])]
+    groups = constituents.groupby("sector")["ticker"]
+    return {group: sorted(tickers) for group, tickers in groups}
 
 
 def download_prices(
@@ -70,7 +113,7 @@ def train_test_split(df: pd.DataFrame, train_end: str) -> tuple[pd.DataFrame, pd
 
 def load_data(config: dict | None = None, force_download: bool = False):
     cfg = (config or load_config())["data"]
-    tickers = all_tickers(cfg["universe"])
+    tickers = all_tickers(load_universe(config))
 
     prices = download_prices(
         tickers, cfg["start_date"], cfg["end_date"], cfg["raw_dir"], force=force_download
@@ -109,7 +152,7 @@ if __name__ == "__main__":
 
     cfg = load_config()
     raw = download_prices(
-        all_tickers(cfg["data"]["universe"]),
+        all_tickers(load_universe(cfg)),
         cfg["data"]["start_date"], cfg["data"]["end_date"], cfg["data"]["raw_dir"],
     )
     print("\nMissing-data sensitivity:")

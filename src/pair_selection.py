@@ -76,12 +76,12 @@ def select_pairs(
 
 
 if __name__ == "__main__":
-    from src.data_loader import load_config, load_data
+    from src.data_loader import load_config, load_data, load_universe
 
     cfg = load_config()
     # select pairs on the training set only to avoid look-ahead bias in the backtest.
     _, log_train, _ = load_data(cfg)
-    result = select_pairs(log_train, cfg["data"]["universe"], **cfg["pairs"])
+    result = select_pairs(log_train, load_universe(cfg), **cfg["pairs"])
     print(f"{len(result)} pairs tested, {result['significant'].sum()} significant after BH, "
           f"{result['selected'].sum()} selected")
     print(result.head(15).round(4).to_string())

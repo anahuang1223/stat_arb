@@ -1,13 +1,14 @@
 data:
-  universe:
-    energy:      [XOM, CVX, COP, EOG, OXY]
-    semis:       [NVDA, AMD, INTC, TXN, QCOM]
-    defense:     [LMT, NOC, GD, RTX, LHX]
-    nuclear:     [CCJ, UEC, DNN, URA, NLR]
-    memory:      [MU, WDC, STX]
-    silver:      [SLV, PAAS, WPM]
-    gold:        [GLD, GDX, NEM]
-
+  # universe: current S&P 500 members grouped by GICS sector (survivorship bias: stocks that
+  # left the index are missing). Only sectors whose stocks share regulated or commodity-driven
+  # fundamentals are used, since those are the ones likely to form stable pairs.
+  sectors:
+    - Utilities
+    - Real Estate
+    - Financials
+    - Energy
+    - Consumer Staples
+    - Materials
   start_date: "2015-01-01"
   end_date:   "2025-12-31"
 
