@@ -2,13 +2,16 @@ import numpy as np
 import pandas as pd
 
 
-# rolling z-score of the spread: how many standard deviations today's spread is from its recent
-# mean. Only current and past values are used so there is no look-ahead.
-def rolling_zscore(spread: pd.Series, window: int) -> pd.Series:
-    rolling_mean = spread.rolling(window, min_periods=window).mean()
-    rolling_std = spread.rolling(window, min_periods=window).std()
-    # a flat window has zero std, so the z-score is undefined there.
-    return (spread - rolling_mean) / rolling_std.replace(0, np.nan)
+# Use the standard deviation from the formation period to calculate each day's z-score.
+# The spread's average during formation is about 0, so we divide the spread by that std.
+# Unlike a rolling z-score, this std stays fixed during trading.
+# If the stocks keep moving apart, the z-score keeps growing and can hit our stop-loss,
+# instead of appearing to return to normal because the rolling average moved.
+def formation_zscore(spread: pd.Series, spread_std: float) -> pd.Series:
+    # a flat formation spread has zero std, so the z-score is undefined.
+    if not spread_std > 0:
+        return pd.Series(np.nan, index=spread.index)
+    return spread / spread_std
 
 
 # turn z-scores into positions on the spread: +1 is long the spread (long Y, short beta * X),

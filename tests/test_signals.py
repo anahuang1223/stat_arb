@@ -2,21 +2,26 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.signals import generate_positions, rolling_zscore
+from src.signals import formation_zscore, generate_positions
 
 
-# Check that the z-score is NaN during warm-up and matches a hand-computed value after.
-def test_rolling_zscore_values():
-    spread = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0])
-    zscores = rolling_zscore(spread, window=3)
-    assert zscores.iloc[:2].isna().all()
-    # window [1, 2, 3] has mean 2 and std 1, so (3 - 2) / 1 = 1.
-    assert zscores.iloc[2] == pytest.approx(1.0)
+# Check that the z-score is the spread in units of the formation std.
+def test_formation_zscore_values():
+    zscores = formation_zscore(pd.Series([0.0, 0.2, -0.1]), spread_std=0.1)
+    assert zscores.tolist() == pytest.approx([0.0, 2.0, -1.0])
 
 
-# Check that a flat spread gives NaN instead of dividing by zero.
-def test_rolling_zscore_flat_spread():
-    zscores = rolling_zscore(pd.Series([1.0, 1.0, 1.0, 1.0]), window=2)
+# Check that a spread drifting away keeps a growing z-score instead of reverting, which a rolling
+# z-score would hide as its mean and std follow the drift.
+def test_formation_zscore_drift_stays_large():
+    zscores = formation_zscore(pd.Series(np.linspace(0.0, 1.0, 50)), spread_std=0.1)
+    assert zscores.is_monotonic_increasing
+    assert zscores.iloc[-1] == pytest.approx(10.0)
+
+
+# Check that a flat formation spread gives NaN instead of dividing by zero.
+def test_formation_zscore_flat_spread():
+    zscores = formation_zscore(pd.Series([1.0, 1.0]), spread_std=0.0)
     assert zscores.isna().all()
 
 

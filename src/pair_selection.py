@@ -37,6 +37,8 @@ def score_pairs(log_prices: pd.DataFrame, universe: dict[str, list[str]]) -> pd.
             "x": x_ticker,
             "alpha": alpha,
             "beta": beta,
+            # the trading z-score is measured against this formation-period spread std.
+            "spread_std": spread.std(),
             "half_life": half_life(spread),
             "pvalue": engle_granger(y_series, x_series),
         })
@@ -44,7 +46,7 @@ def score_pairs(log_prices: pd.DataFrame, universe: dict[str, list[str]]) -> pd.
     # no pairs are available.
     if not rows:
         return pd.DataFrame(
-            columns=["sector", "y", "x", "alpha", "beta", "half_life", "pvalue"]
+            columns=["sector", "y", "x", "alpha", "beta", "spread_std", "half_life", "pvalue"]
         )
     return pd.DataFrame(rows).set_index("pair")
 
