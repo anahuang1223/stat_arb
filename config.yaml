@@ -29,5 +29,17 @@ signals:
   exit_z: 0.5
   stop_z: 4.0
 
+walk_forward:
+  formation_months: 12
+  trading_months: 6
+  # trade only the strongest pairs (lowest p-value) in each window.
+  max_pairs: 20
+  # windows whose trading starts on or before this date are used for tuning (validation);
+  # later windows are the holdout, reported once at the end.
+  validation_end: "2021-12-31"
+
+backtest:
+  cost_bps: 5
+
 robustness:
   missing_frac_grid: [0.01, 0.02, 0.05, 0.10]
