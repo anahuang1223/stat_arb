@@ -124,7 +124,8 @@ def walk_forward_windows(
 
 
 # select pairs on each formation period and backtest them over the following trading period.
-# Returns the daily results of every traded pair and the pairs selected in each window.
+# Returns the daily results of every traded pair and every pair scored in each window, with a
+# traded column marking the ones that were selected and kept by max_pairs.
 def walk_forward(
     log_prices: pd.DataFrame,
     universe: dict[str, list[str]],
@@ -139,7 +140,7 @@ def walk_forward(
     windows = walk_forward_windows(
         log_prices.index, formation_months, trading_months, validation_end
     )
-    pair_results, selections = [], []
+    pair_results, scored_pairs = [], []
     for window_id, window in windows.iterrows():
         # pairs and hedge ratios only see formation data, so the trading period is out of
         # sample.
@@ -148,7 +149,9 @@ def walk_forward(
         # scored is sorted by p-value, so head keeps the strongest selected pairs, max_pairs if
         # specified.
         chosen = scored[scored["selected"]].head(max_pairs)
-        selections.append(chosen.assign(window=window_id, period=window.period))
+        scored_pairs.append(scored.assign(
+            window=window_id, period=window.period, traded=scored.index.isin(chosen.index)
+        ))
 
         history = log_prices.loc[:window.trading_end]
         for pair, row in chosen.iterrows():
@@ -164,8 +167,8 @@ def walk_forward(
         pd.concat(pair_results).rename_axis("date").reset_index() if pair_results
         else pd.DataFrame(columns=["date", "window", "period", "pair", "net_return"])
     )
-    selections = pd.concat(selections) if selections else pd.DataFrame()
-    return pair_results, selections
+    scored_pairs = pd.concat(scored_pairs) if scored_pairs else pd.DataFrame()
+    return pair_results, scored_pairs
 
 
 if __name__ == "__main__":
@@ -176,7 +179,7 @@ if __name__ == "__main__":
     wf_cfg = cfg["walk_forward"]
     prices, _, _ = load_data(cfg)
     log_prices = to_log_prices(prices)
-    pair_results, selections = walk_forward(
+    pair_results, scored_pairs = walk_forward(
         log_prices, load_universe(cfg), **wf_cfg,
         pair_params=cfg["pairs"], signal_params=cfg["signals"], **cfg["backtest"],
     )
@@ -185,6 +188,7 @@ if __name__ == "__main__":
         wf_cfg["validation_end"],
     )
     # Count selected pairs per window; use an empty Series if none were selected.
+    selections = scored_pairs[scored_pairs["traded"]] if len(scored_pairs) else scored_pairs
     counts = selections.groupby("window").size() if len(selections) else pd.Series(dtype=int)
     # Match counts to all windows, filling windows with no selected pairs with zero.
     windows["n_selected"] = counts.reindex(windows.index, fill_value=0)

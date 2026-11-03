@@ -10,15 +10,21 @@ from src.portfolio import equal_weight_returns
 TABLES_DIR = PROJECT_ROOT / "results" / "tables"
 
 
+# every trading day in one period's windows, including days when no pair was traded.
+def period_trading_dates(
+    period: str, windows: pd.DataFrame, dates: pd.DatetimeIndex
+) -> pd.DatetimeIndex:
+    period_windows = windows[windows["period"] == period]
+    start, end = period_windows["trading_start"].iloc[0], period_windows["trading_end"].iloc[-1]
+    return dates[(dates >= start) & (dates <= end)]
+
+
 # performance of one period (validation or holdout): the equal-weight portfolio over every trading
 # day in that period's windows, net and gross of costs, plus the trades behind it.
 def period_summary(
     period: str, windows: pd.DataFrame, pair_results: pd.DataFrame, log_prices: pd.DataFrame
 ) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame]:
-    period_windows = windows[windows["period"] == period]
-    trading_dates = log_prices.loc[
-        period_windows["trading_start"].iloc[0]:period_windows["trading_end"].iloc[-1]
-    ].index
+    trading_dates = period_trading_dates(period, windows, log_prices.index)
     period_results = pair_results[pair_results["period"] == period]
     net_returns = equal_weight_returns(period_results, trading_dates, "net_return")
     gross_returns = equal_weight_returns(period_results, trading_dates, "gross_return")
@@ -44,7 +50,7 @@ if __name__ == "__main__":
         log_prices.index, wf_cfg["formation_months"], wf_cfg["trading_months"],
         wf_cfg["validation_end"],
     )
-    pair_results, selections = walk_forward(
+    pair_results, _ = walk_forward(
         log_prices, load_universe(cfg), **wf_cfg,
         pair_params=cfg["pairs"], signal_params=cfg["signals"], **cfg["backtest"],
     )

@@ -99,10 +99,10 @@ def test_walk_forward_windows_no_overlap():
 # Check that walk_forward selects the cointegrated pair and only trades inside trading periods.
 def test_walk_forward_selects_and_trades_out_of_sample():
     log_prices = _walk_forward_prices()
-    pair_results, selections = walk_forward(
+    pair_results, scored_pairs = walk_forward(
         log_prices, {"s": ["A", "B", "C"]}, formation_months=12, trading_months=6
     )
-    assert "A/B" in set(selections.index)
+    assert "A/B" in set(scored_pairs[scored_pairs["traded"]].index)
     windows = walk_forward_windows(log_prices.index, 12, 6)
     for window_id, rows in pair_results.groupby("window"):
         window = windows.loc[window_id]
@@ -138,6 +138,8 @@ def test_walk_forward_max_pairs():
     universe = {"s": ["A", "B", "C", "D"]}
     _, uncapped = walk_forward(log_prices, universe, 12, 6)
     _, capped = walk_forward(log_prices, universe, 12, 6, max_pairs=1)
-    assert uncapped.groupby("window").size().max() > 1
-    assert capped.groupby("window").size().max() == 1
+    assert uncapped[uncapped["traded"]].groupby("window").size().max() > 1
+    assert capped[capped["traded"]].groupby("window").size().max() == 1
+    # capping only changes which pairs are traded, not which pairs are scored.
+    assert len(capped) == len(uncapped)
 
