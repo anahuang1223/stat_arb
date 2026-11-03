@@ -58,6 +58,7 @@ def backtest_pair(
     entry_z: float = 2.0,
     exit_z: float = 0.5,
     stop_z: float = 4.0,
+    after_stop: str = "reenter",
     cost_bps: float = 0.0,
     start: str | pd.Timestamp | None = None,
     end: str | pd.Timestamp | None = None,
@@ -65,7 +66,7 @@ def backtest_pair(
     spread = log_prices[y_ticker] - alpha - beta * log_prices[x_ticker]
     spread = spread.loc[start:end]
     zscores = formation_zscore(spread, spread_std)
-    positions = generate_positions(zscores, entry_z, exit_z, stop_z)
+    positions = generate_positions(zscores, entry_z, exit_z, stop_z, after_stop)
     # Force the strategy to close any open position on the final trading day.
     positions.iloc[-1] = 0
     weights = pair_weights(positions, beta)
@@ -123,6 +124,31 @@ def walk_forward_windows(
     return windows
 
 
+# backtest every traded pair over its window's trading period, using the hedge ratio and spread
+# std fit on that window's formation period. Kept separate from pair selection so the same pairs
+# can be re-run with different signal settings.
+def backtest_traded_pairs(
+    log_prices: pd.DataFrame,
+    scored_pairs: pd.DataFrame,
+    windows: pd.DataFrame,
+    signal_params: dict | None = None,
+    cost_bps: float = 0.0,
+) -> pd.DataFrame:
+    pair_results = []
+    for pair, row in scored_pairs[scored_pairs["traded"]].iterrows():
+        window = windows.loc[row["window"]]
+        result = backtest_pair(
+            log_prices.loc[:window.trading_end], row["y"], row["x"], row["alpha"], row["beta"],
+            row["spread_std"], **(signal_params or {}), cost_bps=cost_bps,
+            start=window.trading_start, end=window.trading_end,
+        )
+        # Tag each daily result with its pair, window, and validation/holdout period.
+        pair_results.append(result.assign(window=row["window"], period=window.period, pair=pair))
+    if not pair_results:
+        return pd.DataFrame(columns=["date", "window", "period", "pair", "net_return"])
+    return pd.concat(pair_results).rename_axis("date").reset_index()
+
+
 # select pairs on each formation period and backtest them over the following trading period.
 # Returns the daily results of every traded pair and every pair scored in each window, with a
 # traded column marking the ones that were selected and kept by max_pairs.
@@ -140,7 +166,7 @@ def walk_forward(
     windows = walk_forward_windows(
         log_prices.index, formation_months, trading_months, validation_end
     )
-    pair_results, scored_pairs = [], []
+    scored_pairs = []
     for window_id, window in windows.iterrows():
         # pairs and hedge ratios only see formation data, so the trading period is out of
         # sample.
@@ -152,22 +178,10 @@ def walk_forward(
         scored_pairs.append(scored.assign(
             window=window_id, period=window.period, traded=scored.index.isin(chosen.index)
         ))
-
-        history = log_prices.loc[:window.trading_end]
-        for pair, row in chosen.iterrows():
-            result = backtest_pair(
-                history, row["y"], row["x"], row["alpha"], row["beta"], row["spread_std"],
-                **(signal_params or {}), cost_bps=cost_bps,
-                start=window.trading_start, end=window.trading_end,
-            )
-            # Tag each daily result with its pair, window, and validation/holdout period.
-            pair_results.append(result.assign(window=window_id, period=window.period, pair=pair))
-
-    pair_results = (
-        pd.concat(pair_results).rename_axis("date").reset_index() if pair_results
-        else pd.DataFrame(columns=["date", "window", "period", "pair", "net_return"])
-    )
     scored_pairs = pd.concat(scored_pairs) if scored_pairs else pd.DataFrame()
+    pair_results = backtest_traded_pairs(
+        log_prices, scored_pairs, windows, signal_params, cost_bps
+    )
     return pair_results, scored_pairs
 
 

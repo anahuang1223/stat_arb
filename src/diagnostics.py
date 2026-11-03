@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
 
-from src.backtest import walk_forward, walk_forward_windows
+from src.backtest import backtest_traded_pairs, walk_forward, walk_forward_windows
 from src.data_loader import PROJECT_ROOT, load_config, load_data, load_universe, to_log_prices
-from src.evaluate import TABLES_DIR, period_trading_dates
+from src.evaluate import TABLES_DIR, period_summary, period_trading_dates
 from src.metrics import annualized_return, extract_trades, sharpe_ratio
 from src.portfolio import equal_weight_returns
 from src.statistical_tests import engle_granger, half_life
@@ -111,6 +111,33 @@ def cost_sensitivity(
     return pd.DataFrame(rows)
 
 
+# performance of each period under each after_stop rule, on the same selected pairs, so the only
+# difference between rows is what the strategy does after a stop.
+def stop_rule_comparison(
+    log_prices: pd.DataFrame, scored_pairs: pd.DataFrame, windows: pd.DataFrame,
+    signal_params: dict, cost_bps: float,
+) -> pd.DataFrame:
+    rows = []
+    for after_stop in ["reenter", "reset", "retire"]:
+        pair_results = backtest_traded_pairs(
+            log_prices, scored_pairs, windows, {**signal_params, "after_stop": after_stop},
+            cost_bps,
+        )
+        for period in windows["period"].unique():
+            summary, _, _ = period_summary(period, windows, pair_results, log_prices)
+            rows.append({
+                "after_stop": after_stop,
+                "period": period,
+                "net_sharpe": summary.loc["sharpe", "net"],
+                "gross_sharpe": summary.loc["sharpe", "gross"],
+                "annual_return": summary.loc["annual_return", "net"],
+                "max_drawdown": summary.loc["max_drawdown", "net"],
+                "n_trades": summary.loc["n_trades", "net"],
+                "hit_rate": summary.loc["hit_rate", "net"],
+            })
+    return pd.DataFrame(rows)
+
+
 # z-scores of one traded pair over its formation and trading periods, for the spread plots.
 def spread_example(
     pair: str, window_id: int, scored_pairs: pd.DataFrame, windows: pd.DataFrame,
@@ -165,6 +192,13 @@ if __name__ == "__main__":
     costs = cost_sensitivity(pair_results, windows, log_prices.index, [0, 5, 10])
     costs.to_csv(TABLES_DIR / "cost_sensitivity.csv", index=False)
     print("\n" + costs.round(4).to_string(index=False))
+
+    # the holdout rows are exploratory: the rules were compared after the holdout was seen.
+    stop_rules = stop_rule_comparison(
+        log_prices, scored_pairs, windows, signal_cfg, cfg["backtest"]["cost_bps"]
+    )
+    stop_rules.to_csv(TABLES_DIR / "stop_rule_comparison.csv", index=False)
+    print("\n" + stop_rules.round(4).to_string(index=False))
 
     plot_pvalue_histogram(scored_pairs["pvalue"], FIGURES_DIR / "pvalue_histogram.png")
 

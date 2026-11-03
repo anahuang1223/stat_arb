@@ -28,6 +28,9 @@ signals:
   entry_z: 2.0
   exit_z: 0.5
   stop_z: 4.0
+  # after a stop: reenter (baseline), reset (wait for the spread to come back near 0), or
+  # retire (stop trading the pair for the rest of the window).
+  after_stop: reenter
 
 walk_forward:
   formation_months: 12

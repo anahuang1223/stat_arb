@@ -42,3 +42,21 @@ def test_generate_positions_no_flip():
 def test_generate_positions_bad_thresholds():
     with pytest.raises(ValueError):
         generate_positions(pd.Series([0.0]), entry_z=1.0, exit_z=2.0)
+
+
+# Check what each after_stop rule does after a stop: reenter trades the next stretch at once,
+# reset waits for the spread to come back near 0, and retire never trades again.
+@pytest.mark.parametrize("after_stop, expected", [
+    ("reenter", [-1, 0, -1, 0, -1]),
+    ("reset", [-1, 0, 0, 0, -1]),
+    ("retire", [-1, 0, 0, 0, 0]),
+])
+def test_generate_positions_after_stop(after_stop, expected):
+    zscores = pd.Series([2.5, 4.2, 3.0, 0.3, 2.5])
+    assert generate_positions(zscores, after_stop=after_stop).tolist() == expected
+
+
+# Check that a successful mean reversion does not retire the pair, only a stop does.
+def test_generate_positions_retire_only_after_stop():
+    zscores = pd.Series([2.5, 0.3, 2.5])
+    assert generate_positions(zscores, after_stop="retire").tolist() == [-1, 0, -1]
