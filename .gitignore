@@ -6,3 +6,5 @@ __pycache__/
 .DS_Store
 data/raw/*.csv
 data/processed/*.csv
+results/tables/*_daily_returns.csv
+results/tables/*_trades.csv
